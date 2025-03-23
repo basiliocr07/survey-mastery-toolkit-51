@@ -2,6 +2,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { Survey, SurveyStatistics } from '../../domain/models/Survey';
 import { SurveyRepository } from '../../domain/repositories/SurveyRepository';
+import { Json } from '@/integrations/supabase/types';
 
 export class SupabaseSurveyRepository implements SurveyRepository {
   async getAllSurveys(): Promise<Survey[]> {
@@ -33,14 +34,12 @@ export class SupabaseSurveyRepository implements SurveyRepository {
   async createSurvey(survey: Omit<Survey, 'id' | 'createdAt'>): Promise<Survey> {
     const { data, error } = await supabase
       .from('surveys')
-      .insert([
-        {
-          title: survey.title,
-          description: survey.description,
-          questions: survey.questions,
-          delivery_config: survey.deliveryConfig
-        }
-      ])
+      .insert({
+        title: survey.title,
+        description: survey.description,
+        questions: survey.questions as unknown as Json,
+        delivery_config: survey.deliveryConfig as unknown as Json
+      })
       .select()
       .single();
     
@@ -58,8 +57,8 @@ export class SupabaseSurveyRepository implements SurveyRepository {
       .update({
         title: survey.title,
         description: survey.description,
-        questions: survey.questions,
-        delivery_config: survey.deliveryConfig
+        questions: survey.questions as unknown as Json,
+        delivery_config: survey.deliveryConfig as unknown as Json
       })
       .eq('id', survey.id);
     
@@ -87,29 +86,38 @@ export class SupabaseSurveyRepository implements SurveyRepository {
 
   // Método simplificado para mapear resultados de la base de datos a objetos Survey
   private mapToSurvey(item: any): Survey {
-    // Creamos un deliveryConfig simplificado para evitar inferencia de tipos excesiva
-    const deliveryConfig = item.delivery_config ? {
-      type: String(item.delivery_config.type || 'manual'),
-      emailAddresses: Array.isArray(item.delivery_config.emailAddresses) 
-        ? item.delivery_config.emailAddresses 
-        : [],
-      // Manejamos schedule y trigger de manera explícita
-      ...(item.delivery_config.schedule ? {
-        schedule: {
-          frequency: String(item.delivery_config.schedule.frequency || 'daily'),
-          dayOfMonth: Number(item.delivery_config.schedule.dayOfMonth || 1),
-          dayOfWeek: Number(item.delivery_config.schedule.dayOfWeek || 1),
-          time: String(item.delivery_config.schedule.time || '12:00'),
-        }
-      } : {}),
-      ...(item.delivery_config.trigger ? {
-        trigger: {
-          type: String(item.delivery_config.trigger.type || 'ticket-closed'),
-          delayHours: Number(item.delivery_config.trigger.delayHours || 24),
-          sendAutomatically: Boolean(item.delivery_config.trigger.sendAutomatically || false),
-        }
-      } : {})
-    } : undefined;
+    let deliveryConfig: any = undefined;
+    
+    if (item.delivery_config) {
+      // Cast para manejar tipo
+      const deliveryConfigData = item.delivery_config as any;
+      
+      deliveryConfig = {
+        type: deliveryConfigData.type ? String(deliveryConfigData.type) : 'manual',
+        emailAddresses: Array.isArray(deliveryConfigData.emailAddresses) 
+          ? deliveryConfigData.emailAddresses 
+          : [],
+      } as Survey['deliveryConfig'];
+
+      // Añadir schedule si existe
+      if (deliveryConfigData.schedule) {
+        deliveryConfig.schedule = {
+          frequency: deliveryConfigData.schedule.frequency || 'daily',
+          dayOfMonth: Number(deliveryConfigData.schedule.dayOfMonth || 1),
+          dayOfWeek: Number(deliveryConfigData.schedule.dayOfWeek || 1),
+          time: String(deliveryConfigData.schedule.time || '12:00'),
+        };
+      }
+      
+      // Añadir trigger si existe
+      if (deliveryConfigData.trigger) {
+        deliveryConfig.trigger = {
+          type: deliveryConfigData.trigger.type || 'ticket-closed',
+          delayHours: Number(deliveryConfigData.trigger.delayHours || 24),
+          sendAutomatically: Boolean(deliveryConfigData.trigger.sendAutomatically || false),
+        };
+      }
+    }
 
     return {
       id: String(item.id),
@@ -173,7 +181,9 @@ export class SupabaseSurveyRepository implements SurveyRepository {
     // Calculamos tiempo promedio de respuesta si hay datos disponibles
     if (totalResponses > 0) {
       const totalCompletionTime = responses.reduce((sum, response) => {
-        return sum + (response.completion_time || 0);
+        // Aseguramos que completion_time sea un número válido
+        const completionTime = response.completion_time || 0;
+        return sum + completionTime;
       }, 0);
       averageCompletionTime = totalCompletionTime / totalResponses;
       completionRate = 100; // Asumimos una tasa de finalización del 100% para respuestas enviadas
