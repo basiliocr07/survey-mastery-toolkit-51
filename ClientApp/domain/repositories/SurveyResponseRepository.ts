@@ -1,9 +1,7 @@
 
-import { SurveyResponse, SurveyResponseSubmission } from '../models/Survey';
+import { SurveyResponse } from '../models/Survey';
 
 export interface SurveyResponseRepository {
-  getResponsesBySurveyId(surveyId: string): Promise<SurveyResponse[]>;
-  getResponseById(id: string): Promise<SurveyResponse | null>;
-  submitResponse(responseData: SurveyResponseSubmission): Promise<SurveyResponse>;
-  deleteResponse(id: string): Promise<boolean>;
+  getBySurveyId(surveyId: string): Promise<SurveyResponse[]>;
+  submit(response: Omit<SurveyResponse, 'id' | 'submittedAt'>): Promise<SurveyResponse>;
 }

@@ -1,12 +1,10 @@
 
-import { Survey, SurveyStatistics } from '../models/Survey';
+import { Survey } from '../models/Survey';
 
 export interface SurveyRepository {
-  getAllSurveys(): Promise<Survey[]>;
-  getSurveyById(id: string): Promise<Survey | null>;
-  createSurvey(surveyData: Omit<Survey, 'id' | 'createdAt'>): Promise<Survey>;
-  updateSurvey(survey: Survey): Promise<Survey>;
-  deleteSurvey(id: string): Promise<boolean>;
-  getSurveyStatistics(surveyId: string): Promise<SurveyStatistics>;
-  sendSurveyEmails(surveyId: string, emailAddresses: string[]): Promise<boolean>;
+  getAll(): Promise<Survey[]>;
+  getById(id: string): Promise<Survey | null>;
+  create(survey: Omit<Survey, 'id' | 'createdAt' | 'updatedAt'>): Promise<Survey>;
+  update(id: string, survey: Partial<Survey>): Promise<Survey>;
+  delete(id: string): Promise<void>;
 }
