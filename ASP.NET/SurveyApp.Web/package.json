@@ -5,9 +5,7 @@
   "description": "SurveyApp Web Application",
   "scripts": {
     "build:css": "tailwindcss -i ./wwwroot/css/tailwind_custom.css -o ./wwwroot/css/tailwind.min.css --minify",
-    "watch:css": "tailwindcss -i ./wwwroot/css/tailwind_custom.css -o ./wwwroot/css/tailwind.min.css --watch",
-    "build:spa": "cd ../../ClientApp && npm run build",
-    "dev:spa": "cd ../../ClientApp && npm run dev"
+    "watch:css": "tailwindcss -i ./wwwroot/css/tailwind_custom.css -o ./wwwroot/css/tailwind.min.css --watch"
   },
   "dependencies": {
     "tailwindcss": "^3.3.0",
