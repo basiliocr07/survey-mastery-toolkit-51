@@ -7,8 +7,8 @@ namespace SurveyApp.Web.Models
 {
     public class SurveyResponseViewModel
     {
-        public int Id { get; set; }
-        public int SurveyId { get; set; }
+        public string Id { get; set; }
+        public string SurveyId { get; set; }
         public string SurveyTitle { get; set; }
         public string RespondentName { get; set; }
         public string RespondentEmail { get; set; }

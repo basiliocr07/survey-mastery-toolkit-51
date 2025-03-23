@@ -118,7 +118,7 @@ namespace SurveyApp.Web.Controllers
                             ? new TriggerSettings
                             {
                                 Type = model.DeliveryConfig.Trigger.Type,
-                                DelayHours = model.DeliveryConfig.Trigger.DelayHours,
+                                DelayHours = model.DeliveyConfig.Trigger.DelayHours,
                                 SendAutomatically = model.DeliveryConfig.Trigger.SendAutomatically
                             }
                             : null
@@ -270,12 +270,19 @@ namespace SurveyApp.Web.Controllers
                 },
                 Responses = responses.Select(r => new SurveyResponseViewModel
                 {
-                    Id = r.Id.ToString(),
-                    SurveyId = r.SurveyId.ToString(),
+                    Id = r.Id,
+                    SurveyId = r.SurveyId,
                     RespondentName = r.RespondentName,
                     RespondentEmail = r.RespondentEmail,
                     SubmittedAt = r.SubmittedAt,
-                    Answers = r.Answers
+                    Answers = r.Answers.Select(a => new QuestionResponseViewModel
+                    {
+                        QuestionId = a.QuestionId,
+                        QuestionTitle = a.QuestionTitle,
+                        QuestionType = a.QuestionType,
+                        Value = a.Value,
+                        IsValid = a.IsValid
+                    }).ToList()
                 }).ToList()
             };
 
