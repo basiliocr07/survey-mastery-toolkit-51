@@ -45,7 +45,8 @@ namespace SurveyApp.Web.Models
         public Dictionary<string, string> Answers { get; set; } = new Dictionary<string, string>();
     }
 
-    public class SurveyQuestionViewModel
+    // Renamed to avoid conflict with SurveyViewModel.cs
+    public class SurveyQuestionForResponseViewModel
     {
         public string Id { get; set; }
         public string Type { get; set; }
@@ -59,6 +60,6 @@ namespace SurveyApp.Web.Models
         public int Id { get; set; }
         public string Title { get; set; }
         public string Description { get; set; }
-        public List<SurveyQuestionViewModel> Questions { get; set; } = new List<SurveyQuestionViewModel>();
+        public List<SurveyQuestionForResponseViewModel> Questions { get; set; } = new List<SurveyQuestionForResponseViewModel>();
     }
 }
