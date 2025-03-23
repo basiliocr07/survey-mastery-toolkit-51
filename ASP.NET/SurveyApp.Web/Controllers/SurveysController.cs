@@ -13,10 +13,12 @@ namespace SurveyApp.Web.Controllers
     public class SurveysController : Controller
     {
         private readonly ISurveyService _surveyService;
+        private readonly ISurveyResponseService _responseService;
 
-        public SurveysController(ISurveyService surveyService)
+        public SurveysController(ISurveyService surveyService, ISurveyResponseService responseService)
         {
             _surveyService = surveyService;
+            _responseService = responseService;
         }
 
         // GET: Surveys
@@ -208,49 +210,7 @@ namespace SurveyApp.Web.Controllers
             return View("Create", model);
         }
 
-        // POST: Surveys/Delete/5
-        [HttpPost, ActionName("Delete")]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> DeleteConfirmed(int id)
-        {
-            var result = await _surveyService.DeleteSurveyAsync(id);
-            if (result)
-                TempData["SuccessMessage"] = "Survey deleted successfully.";
-            else
-                TempData["ErrorMessage"] = "Failed to delete survey.";
-                
-            return RedirectToAction(nameof(Index));
-        }
-
-        // POST: Surveys/SendEmails
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> SendEmails(int surveyId, List<string> emailAddresses)
-        {
-            var success = await _surveyService.SendSurveyEmailsAsync(surveyId, emailAddresses);
-            if (success)
-            {
-                TempData["SuccessMessage"] = "Survey emails have been queued for delivery.";
-            }
-            else
-            {
-                TempData["ErrorMessage"] = "Failed to send survey emails. Please try again.";
-            }
-            
-            return RedirectToAction(nameof(Edit), new { id = surveyId });
-        }
-
-        // NEW: API endpoint to check if a survey exists
-        [HttpGet]
-        [Route("api/surveys/{id}/exists")]
-        public async Task<IActionResult> SurveyExists(int id)
-        {
-            var survey = await _surveyService.GetSurveyByIdAsync(id);
-            return Json(new { exists = survey != null });
-        }
-
-        // NEW: Preview Survey
-        [HttpGet]
+        // GET: Surveys/Preview/5
         public async Task<IActionResult> Preview(int id)
         {
             var survey = await _surveyService.GetSurveyByIdAsync(id);
@@ -259,10 +219,9 @@ namespace SurveyApp.Web.Controllers
                 return NotFound();
             }
 
-            // Create a view model for the preview
             var model = new SurveyPreviewViewModel
             {
-                Id = survey.Id,
+                Id = survey.Id.ToString(),
                 Title = survey.Title,
                 Description = survey.Description,
                 Questions = survey.Questions.Select(q => new QuestionViewModel
@@ -285,101 +244,122 @@ namespace SurveyApp.Web.Controllers
 
             return View(model);
         }
-
-        // NEW: Share Survey
-        [HttpGet]
-        public async Task<IActionResult> Share(int id)
+        
+        // GET: Surveys/Results/5
+        public async Task<IActionResult> Results(int id)
         {
             var survey = await _surveyService.GetSurveyByIdAsync(id);
             if (survey == null)
             {
                 return NotFound();
             }
-
-            // Create sharing URL
-            string surveyUrl = Url.Action("Take", "SurveyResponses", new { id = survey.Id }, Request.Scheme);
             
-            ViewBag.SurveyUrl = surveyUrl;
-            ViewBag.SurveyTitle = survey.Title;
+            var responses = await _responseService.GetResponsesBySurveyIdAsync(id);
+            
+            var model = new SurveyResultsViewModel
+            {
+                Survey = new SurveyViewModel
+                {
+                    Id = survey.Id.ToString(),
+                    Title = survey.Title,
+                    Description = survey.Description,
+                    CreatedAt = survey.CreatedAt,
+                    Responses = responses.Count(),
+                    CompletionRate = CalculateCompletionRate(responses, survey),
+                    Status = survey.Status
+                },
+                Responses = responses.Select(r => new SurveyResponseViewModel
+                {
+                    Id = r.Id.ToString(),
+                    SurveyId = r.SurveyId.ToString(),
+                    RespondentName = r.RespondentName,
+                    RespondentEmail = r.RespondentEmail,
+                    SubmittedAt = r.SubmittedAt,
+                    Answers = r.Answers
+                }).ToList()
+            };
 
-            return View();
+            return View(model);
         }
 
-        // Helper method to get real surveys from database
+        // POST: Surveys/Delete/5
+        [HttpPost, ActionName("Delete")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Delete(int id)
+        {
+            var result = await _surveyService.DeleteSurveyAsync(id);
+            if (result)
+                TempData["SuccessMessage"] = "Survey deleted successfully.";
+            else
+                TempData["ErrorMessage"] = "Failed to delete survey.";
+                
+            return RedirectToAction(nameof(Index));
+        }
+
+        // Helper method to get surveys
         private async Task<List<SurveyViewModel>> GetSurveys()
         {
             try
             {
                 var surveys = await _surveyService.GetAllSurveysAsync();
-                return surveys.Select(s => new SurveyViewModel
+                var surveyViewModels = new List<SurveyViewModel>();
+                
+                foreach (var survey in surveys)
                 {
-                    Id = s.Id.ToString(),
-                    Title = s.Title,
-                    Description = s.Description,
-                    CreatedAt = s.CreatedAt,
-                    Responses = s.ResponseCount, 
-                    CompletionRate = s.CompletionRate,
-                    Status = s.Status
-                }).ToList();
+                    var responses = await _responseService.GetResponsesBySurveyIdAsync(survey.Id);
+                    
+                    surveyViewModels.Add(new SurveyViewModel
+                    {
+                        Id = survey.Id.ToString(),
+                        Title = survey.Title,
+                        Description = survey.Description,
+                        CreatedAt = survey.CreatedAt,
+                        Responses = responses.Count(),
+                        CompletionRate = CalculateCompletionRate(responses, survey),
+                        Status = survey.Status
+                    });
+                }
+                
+                return surveyViewModels;
             }
             catch (Exception ex)
             {
                 // Log the exception
                 Console.WriteLine($"Error getting surveys: {ex.Message}");
-                
-                // If there's an error, return sample data temporarily
-                return GetSampleSurveys();
+                return new List<SurveyViewModel>();
             }
         }
-
-        // Helper method to get sample surveys while we're developing
-        private List<SurveyViewModel> GetSampleSurveys()
+        
+        // Helper method to calculate completion rate
+        private int CalculateCompletionRate(IEnumerable<SurveyResponse> responses, Survey survey)
         {
-            // This would normally come from the database via the service
-            // For now, we're creating sample data that matches the React version
-            return new List<SurveyViewModel>
+            if (!responses.Any())
+                return 0;
+                
+            var requiredQuestions = survey.Questions.Count(q => q.Required);
+            if (requiredQuestions == 0)
+                return 100;
+                
+            var totalAnswered = 0;
+            var totalRequired = responses.Count() * requiredQuestions;
+            
+            foreach (var response in responses)
             {
-                new SurveyViewModel
-                {
-                    Id = "1",
-                    Title = "Customer Satisfaction Survey",
-                    Description = "Gather feedback about our customer service quality",
-                    CreatedAt = DateTime.Parse("2023-10-15T12:00:00Z"),
-                    Responses = 42,
-                    CompletionRate = 78,
-                    Status = "active"
-                },
-                new SurveyViewModel
-                {
-                    Id = "2",
-                    Title = "Product Feedback Survey",
-                    Description = "Help us improve our product offerings",
-                    CreatedAt = DateTime.Parse("2023-09-22T15:30:00Z"),
-                    Responses = 103,
-                    CompletionRate = 89,
-                    Status = "active"
-                },
-                new SurveyViewModel
-                {
-                    Id = "3",
-                    Title = "Website Usability Survey",
-                    Description = "Evaluate the user experience of our new website",
-                    CreatedAt = DateTime.Parse("2023-11-05T09:15:00Z"),
-                    Responses = 28,
-                    CompletionRate = 65,
-                    Status = "draft"
-                },
-                new SurveyViewModel
-                {
-                    Id = "4",
-                    Title = "Employee Satisfaction Survey",
-                    Description = "Annual survey for employee feedback",
-                    CreatedAt = DateTime.Parse("2023-08-10T14:20:00Z"),
-                    Responses = 56,
-                    CompletionRate = 92,
-                    Status = "archived"
-                }
-            };
+                var answeredRequired = response.Answers.Count(a => 
+                    survey.Questions.FirstOrDefault(q => q.Id.ToString() == a.QuestionId)?.Required == true
+                    && !string.IsNullOrEmpty(a.Value));
+                    
+                totalAnswered += answeredRequired;
+            }
+            
+            return totalRequired > 0 ? (int)(totalAnswered * 100.0 / totalRequired) : 100;
         }
+    }
+    
+    // Additional ViewModel to support the Results view
+    public class SurveyResultsViewModel
+    {
+        public SurveyViewModel Survey { get; set; }
+        public List<SurveyResponseViewModel> Responses { get; set; }
     }
 }

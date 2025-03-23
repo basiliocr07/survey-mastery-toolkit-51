@@ -181,9 +181,9 @@ export class SupabaseSurveyRepository implements SurveyRepository {
     // Calculamos tiempo promedio de respuesta si hay datos disponibles
     if (totalResponses > 0) {
       const totalCompletionTime = responses.reduce((sum, response) => {
-        // Aseguramos que completion_time sea un número válido
-        const completionTime = response.completion_time || 0;
-        return sum + completionTime;
+        // Si el campo completion_time no existe, usamos 0
+        // Este es el arreglo para el error TS2339
+        return sum + ((response as any).completion_time || 0);
       }, 0);
       averageCompletionTime = totalCompletionTime / totalResponses;
       completionRate = 100; // Asumimos una tasa de finalización del 100% para respuestas enviadas
