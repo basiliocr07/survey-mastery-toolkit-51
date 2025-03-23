@@ -39,8 +39,8 @@ namespace SurveyApp.Web.Controllers
             var responses = await _responseService.GetResponsesBySurveyIdAsync(surveyId);
             var viewModel = responses.Select(r => new SurveyResponseViewModel
             {
-                Id = r.Id,
-                SurveyId = r.SurveyId,
+                Id = r.Id.ToString(),
+                SurveyId = r.SurveyId.ToString(),
                 SurveyTitle = survey.Title,
                 RespondentName = r.RespondentName,
                 RespondentEmail = r.RespondentEmail,
