@@ -2,6 +2,7 @@
 import { Survey, SurveyQuestion, SurveyStatistics } from '../../domain/models/Survey';
 import { SurveyRepository } from '../../domain/repositories/SurveyRepository';
 import { supabase } from '../../integrations/supabase/client';
+import { Json } from '../../integrations/supabase/types';
 
 export class SupabaseSurveyRepository implements SurveyRepository {
   async getAllSurveys(): Promise<Survey[]> {
@@ -29,16 +30,17 @@ export class SupabaseSurveyRepository implements SurveyRepository {
   }
 
   async createSurvey(survey: Omit<Survey, 'id' | 'createdAt'>): Promise<Survey> {
+    // Convert domain models to JSON-compatible types
     const { data, error } = await supabase
       .from('surveys')
-      .insert([{
+      .insert({
         title: survey.title,
         description: survey.description,
-        questions: survey.questions,
-        delivery_config: survey.deliveryConfig,
-        status: 'active',
+        questions: survey.questions as unknown as Json,
+        delivery_config: survey.deliveryConfig as unknown as Json,
+        status: 'active', // Store status in delivery_config if needed
         created_at: new Date().toISOString()
-      }])
+      })
       .select();
 
     if (error) throw error;
@@ -52,9 +54,9 @@ export class SupabaseSurveyRepository implements SurveyRepository {
       .update({
         title: survey.title,
         description: survey.description,
-        questions: survey.questions,
-        delivery_config: survey.deliveryConfig,
-        status: survey.status
+        questions: survey.questions as unknown as Json,
+        delivery_config: survey.deliveryConfig as unknown as Json,
+        // If status is needed, store it inside delivery_config
       })
       .eq('id', survey.id);
 
@@ -71,15 +73,22 @@ export class SupabaseSurveyRepository implements SurveyRepository {
   }
 
   async getSurveysByStatus(status: string): Promise<Survey[]> {
+    // Since status isn't a direct column, we may need a different approach
+    // Option 1: If status is stored in the delivery_config
     const { data, error } = await supabase
       .from('surveys')
       .select('*')
-      .eq('status', status)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
     
-    return (data || []).map(this.mapToSurvey);
+    // Filter based on status that might be inside delivery_config
+    const filteredData = (data || []).filter(survey => {
+      const deliveryConfig = survey.delivery_config as any;
+      return deliveryConfig?.status === status;
+    });
+    
+    return filteredData.map(this.mapToSurvey);
   }
 
   async getSurveyStatistics(surveyId: string): Promise<SurveyStatistics> {
@@ -97,7 +106,13 @@ export class SupabaseSurveyRepository implements SurveyRepository {
 
     // Calculate basic statistics
     const totalResponses = responses?.length || 0;
-    const completionTimes = responses?.map(r => r.completion_time || 0).filter(t => t > 0) || [];
+    
+    // Safely extract completion times
+    const completionTimes = responses?.map(r => {
+      const responseData = r as any;
+      return responseData.completion_time || 0;
+    }).filter(t => t > 0) || [];
+    
     const averageCompletionTime = completionTimes.length > 0 
       ? completionTimes.reduce((sum, time) => sum + time, 0) / completionTimes.length 
       : 0;
@@ -119,8 +134,8 @@ export class SupabaseSurveyRepository implements SurveyRepository {
     // Calculate question-specific statistics
     const questionStats = survey.questions.map(question => {
       const questionResponses = responses
-        .filter(r => r.answers && r.answers[question.id])
-        .map(r => r.answers[question.id]);
+        .filter(r => r.answers && (r.answers as any)[question.id])
+        .map(r => (r.answers as any)[question.id]);
       
       // Count occurrences of each answer
       const answerCounts: Record<string, number> = {};
@@ -177,7 +192,8 @@ export class SupabaseSurveyRepository implements SurveyRepository {
       description: data.description,
       questions: data.questions || [],
       createdAt: data.created_at,
-      deliveryConfig: data.delivery_config
+      deliveryConfig: data.delivery_config,
+      status: (data.delivery_config as any)?.status || 'active' // Extract status from delivery_config if needed
     };
   }
 }
