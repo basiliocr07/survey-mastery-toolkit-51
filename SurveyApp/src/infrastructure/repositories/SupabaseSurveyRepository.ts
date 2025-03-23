@@ -1,170 +1,179 @@
 
-import { v4 as uuidv4 } from 'uuid';
-import { supabase } from '../../integrations/supabase/client';
 import { Survey, SurveyStatistics } from '../../domain/models/Survey';
 import { SurveyRepository } from '../../domain/repositories/SurveyRepository';
+import { supabase } from '../../integrations/supabase/client';
 
 export class SupabaseSurveyRepository implements SurveyRepository {
   async getAllSurveys(): Promise<Survey[]> {
-    try {
-      const { data, error } = await supabase
-        .from('surveys')
-        .select('*')
-        .order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('surveys')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-      if (error) throw error;
-
-      return data.map(this.mapFromDatabase);
-    } catch (error) {
-      console.error('Error fetching surveys:', error);
-      throw error;
-    }
+    if (error) throw error;
+    
+    return (data || []).map(this.mapToSurvey);
   }
 
   async getSurveyById(id: string): Promise<Survey | null> {
-    try {
-      const { data, error } = await supabase
-        .from('surveys')
-        .select('*')
-        .eq('id', id)
-        .single();
+    const { data, error } = await supabase
+      .from('surveys')
+      .select('*, questions(*)')
+      .eq('id', id)
+      .single();
 
-      if (error) {
-        if (error.code === 'PGRST116') return null; // Record not found
-        throw error;
-      }
-
-      return this.mapFromDatabase(data);
-    } catch (error) {
-      console.error(`Error fetching survey ${id}:`, error);
-      throw error;
-    }
+    if (error) return null;
+    if (!data) return null;
+    
+    return this.mapToSurveyWithQuestions(data);
   }
 
-  async createSurvey(surveyData: Omit<Survey, 'id' | 'createdAt'>): Promise<Survey> {
-    try {
-      const newSurvey = {
-        id: uuidv4(),
-        ...surveyData,
-        created_at: new Date().toISOString(),
-      };
+  async createSurvey(survey: Omit<Survey, 'id' | 'createdAt'>): Promise<Survey> {
+    // First create the survey
+    const { data: surveyData, error: surveyError } = await supabase
+      .from('surveys')
+      .insert([{
+        title: survey.title,
+        description: survey.description
+      }])
+      .select()
+      .single();
 
-      const { data, error } = await supabase
-        .from('surveys')
-        .insert(this.mapToDatabase(newSurvey))
-        .select()
-        .single();
+    if (surveyError) throw surveyError;
+    
+    // Then create questions if any
+    if (survey.questions && survey.questions.length > 0) {
+      const questionsToInsert = survey.questions.map((question, index) => ({
+        survey_id: surveyData.id,
+        title: question.title,
+        description: question.description,
+        type: question.type,
+        required: question.required,
+        options: question.options,
+        order: index
+      }));
 
-      if (error) throw error;
+      const { error: questionsError } = await supabase
+        .from('questions')
+        .insert(questionsToInsert);
 
-      return this.mapFromDatabase(data);
-    } catch (error) {
-      console.error('Error creating survey:', error);
-      throw error;
+      if (questionsError) throw questionsError;
     }
+
+    // Fetch the complete survey with questions
+    return this.getSurveyById(surveyData.id) as Promise<Survey>;
   }
 
-  async updateSurvey(survey: Survey): Promise<Survey> {
-    try {
-      const { data, error } = await supabase
-        .from('surveys')
-        .update(this.mapToDatabase(survey))
-        .eq('id', survey.id)
-        .select()
-        .single();
+  async updateSurvey(survey: Survey): Promise<boolean> {
+    const { error: surveyError } = await supabase
+      .from('surveys')
+      .update({
+        title: survey.title,
+        description: survey.description
+      })
+      .eq('id', survey.id);
 
-      if (error) throw error;
+    if (surveyError) throw surveyError;
+    
+    // Handle questions update: we'll use a simple approach of deleting and recreating
+    const { error: deleteError } = await supabase
+      .from('questions')
+      .delete()
+      .eq('survey_id', survey.id);
+    
+    if (deleteError) throw deleteError;
 
-      return this.mapFromDatabase(data);
-    } catch (error) {
-      console.error(`Error updating survey ${survey.id}:`, error);
-      throw error;
+    if (survey.questions && survey.questions.length > 0) {
+      const questionsToInsert = survey.questions.map((question, index) => ({
+        survey_id: survey.id,
+        title: question.title,
+        description: question.description,
+        type: question.type,
+        required: question.required,
+        options: question.options,
+        order: index
+      }));
+
+      const { error: questionsError } = await supabase
+        .from('questions')
+        .insert(questionsToInsert);
+
+      if (questionsError) throw questionsError;
     }
+
+    return true;
   }
 
   async deleteSurvey(id: string): Promise<boolean> {
-    try {
-      const { error } = await supabase
-        .from('surveys')
-        .delete()
-        .eq('id', id);
+    // Delete questions first (cascade would work too if set up in DB)
+    await supabase
+      .from('questions')
+      .delete()
+      .eq('survey_id', id);
+    
+    // Delete the survey
+    const { error } = await supabase
+      .from('surveys')
+      .delete()
+      .eq('id', id);
 
-      if (error) throw error;
+    return !error;
+  }
 
-      return true;
-    } catch (error) {
-      console.error(`Error deleting survey ${id}:`, error);
-      throw error;
-    }
+  async getSurveysByStatus(status: string): Promise<Survey[]> {
+    const { data, error } = await supabase
+      .from('surveys')
+      .select('*')
+      .eq('status', status)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    
+    return (data || []).map(this.mapToSurvey);
   }
 
   async getSurveyStatistics(surveyId: string): Promise<SurveyStatistics> {
-    try {
-      // This would typically be a more complex implementation depending on the database schema
-      // and how responses are stored. For now, we'll return mock statistics.
-      
-      const { data: responses, error } = await supabase
-        .from('survey_responses')
-        .select('*')
-        .eq('survey_id', surveyId);
-
-      if (error) throw error;
-
-      // Calculate statistics based on responses
-      // This would be more complex in a real implementation
-      const totalResponses = responses.length;
-      
-      return {
-        totalResponses,
-        completionRate: 0.75, // Mock data
-        averageCompletionTime: 120, // 2 minutes (mock data)
-        questionStats: [] // Mock data
-      };
-    } catch (error) {
-      console.error(`Error fetching statistics for survey ${surveyId}:`, error);
-      throw error;
-    }
+    // This would need to be implemented based on actual data structure
+    // Here's a mock implementation
+    return {
+      totalResponses: 0,
+      averageCompletionTime: 0,
+      completionRate: 0,
+      questionStats: []
+    };
   }
 
   async sendSurveyEmails(surveyId: string, emailAddresses: string[]): Promise<boolean> {
-    try {
-      // This would typically involve calling an email service API
-      // For this implementation, we'll just log the attempt and return success
-      console.log(`Sending survey ${surveyId} to:`, emailAddresses);
-      
-      // In a real implementation, you would call an API endpoint or service
-      // For example:
-      // const { data, error } = await supabase.functions.invoke('send-survey-emails', {
-      //   body: { surveyId, emailAddresses }
-      // });
-      
-      return true;
-    } catch (error) {
-      console.error(`Error sending emails for survey ${surveyId}:`, error);
-      throw error;
-    }
+    // This would call a serverless function to send emails
+    // Mock implementation
+    console.log(`Would send survey ${surveyId} to ${emailAddresses.join(', ')}`);
+    return true;
   }
 
-  // Helper methods to map between domain model and database schema
-  private mapFromDatabase(data: any): Survey {
+  private mapToSurvey(data: any): Survey {
     return {
       id: data.id,
       title: data.title,
       description: data.description,
-      questions: data.questions,
       createdAt: data.created_at,
-      deliveryConfig: data.delivery_config
+      questions: [] // Questions would be loaded separately
     };
   }
 
-  private mapToDatabase(survey: any): any {
-    return {
-      id: survey.id,
-      title: survey.title,
-      description: survey.description,
-      questions: survey.questions,
-      created_at: survey.createdAt,
-      delivery_config: survey.deliveryConfig
-    };
+  private mapToSurveyWithQuestions(data: any): Survey {
+    const survey = this.mapToSurvey(data);
+    
+    if (data.questions) {
+      survey.questions = data.questions.map((q: any) => ({
+        id: q.id,
+        title: q.title,
+        description: q.description,
+        type: q.type,
+        required: q.required,
+        options: q.options,
+      }));
+    }
+    
+    return survey;
   }
 }
