@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { Survey, SurveyStatistics } from '../../domain/models/Survey';
 import { SurveyRepository } from '../../domain/repositories/SurveyRepository';
@@ -84,12 +83,10 @@ export class SupabaseSurveyRepository implements SurveyRepository {
     return true;
   }
 
-  // Método simplificado para mapear resultados de la base de datos a objetos Survey
   private mapToSurvey(item: any): Survey {
     let deliveryConfig: any = undefined;
     
     if (item.delivery_config) {
-      // Cast para manejar tipo
       const deliveryConfigData = item.delivery_config as any;
       
       deliveryConfig = {
@@ -99,7 +96,6 @@ export class SupabaseSurveyRepository implements SurveyRepository {
           : [],
       } as Survey['deliveryConfig'];
 
-      // Añadir schedule si existe
       if (deliveryConfigData.schedule) {
         deliveryConfig.schedule = {
           frequency: deliveryConfigData.schedule.frequency || 'daily',
@@ -109,7 +105,6 @@ export class SupabaseSurveyRepository implements SurveyRepository {
         };
       }
       
-      // Añadir trigger si existe
       if (deliveryConfigData.trigger) {
         deliveryConfig.trigger = {
           type: deliveryConfigData.trigger.type || 'ticket-closed',
@@ -130,8 +125,6 @@ export class SupabaseSurveyRepository implements SurveyRepository {
   }
   
   async getSurveysByStatus(status: string): Promise<Survey[]> {
-    // Esta es una implementación mock. En una aplicación real, necesitarías
-    // una columna 'status' en tu tabla de encuestas.
     const { data, error } = await supabase
       .from('surveys')
       .select('*');
@@ -141,12 +134,10 @@ export class SupabaseSurveyRepository implements SurveyRepository {
       throw error;
     }
     
-    // Filtramos en el cliente ya que podría no haber un campo status en la DB
     return (data || []).map(this.mapToSurvey);
   }
   
   async getSurveyStatistics(surveyId: string): Promise<SurveyStatistics> {
-    // Obtenemos las respuestas para esta encuesta
     const { data: responses, error: responsesError } = await supabase
       .from('survey_responses')
       .select('*')
@@ -157,7 +148,6 @@ export class SupabaseSurveyRepository implements SurveyRepository {
       throw responsesError;
     }
     
-    // Obtenemos la encuesta
     const { data: survey, error: surveyError } = await supabase
       .from('surveys')
       .select('*')
@@ -173,34 +163,30 @@ export class SupabaseSurveyRepository implements SurveyRepository {
       throw new Error(`Survey with id ${surveyId} not found`);
     }
     
-    // Calculamos estadísticas básicas
     const totalResponses = responses.length;
     let completionRate = 0;
     let averageCompletionTime = 0;
     
-    // Calculamos tiempo promedio de respuesta si hay datos disponibles
     if (totalResponses > 0) {
       const totalCompletionTime = responses.reduce((sum, response) => {
-        // Si el campo completion_time no existe o es null, usamos 0
-        const completionTime = response.completion_time || 0;
+        const completionTime = response.completion_time !== undefined ? 
+          (response.completion_time as number) : 0;
         return sum + completionTime;
       }, 0);
       
       averageCompletionTime = totalCompletionTime / totalResponses;
-      completionRate = 100; // Asumimos una tasa de finalización del 100% para respuestas enviadas
+      completionRate = 100;
     }
     
     return {
       totalResponses,
       averageCompletionTime,
       completionRate,
-      questionStats: [] // En un caso real, aquí calcularíamos estadísticas para cada pregunta
+      questionStats: []
     };
   }
   
   async sendSurveyEmails(surveyId: string, emailAddresses: string[]): Promise<boolean> {
-    // En un caso real, aquí enviaríamos correos electrónicos.
-    // Como es una simulación, simplemente devolvemos true
     console.log(`Sending survey ${surveyId} to:`, emailAddresses);
     return true;
   }

@@ -22,6 +22,7 @@ namespace SurveyApp.Infrastructure.Repositories
         {
             return await _context.SurveyResponses
                 .Include(r => r.Answers)
+                .OrderByDescending(r => r.SubmittedAt)
                 .ToListAsync();
         }
 
@@ -37,11 +38,18 @@ namespace SurveyApp.Infrastructure.Repositories
             return await _context.SurveyResponses
                 .Include(r => r.Answers)
                 .Where(r => r.SurveyId == surveyId)
+                .OrderByDescending(r => r.SubmittedAt)
                 .ToListAsync();
         }
 
         public async Task<bool> AddAsync(SurveyResponse surveyResponse)
         {
+            // Capture submission time if not set
+            if (surveyResponse.SubmittedAt == default)
+            {
+                surveyResponse.SubmittedAt = System.DateTime.UtcNow;
+            }
+            
             _context.SurveyResponses.Add(surveyResponse);
             return await _context.SaveChangesAsync() > 0;
         }

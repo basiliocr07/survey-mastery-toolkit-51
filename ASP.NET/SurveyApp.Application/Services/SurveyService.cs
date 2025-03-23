@@ -2,6 +2,7 @@
 using SurveyApp.Application.Interfaces;
 using SurveyApp.Domain.Models;
 using SurveyApp.Domain.Repositories;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -11,10 +12,12 @@ namespace SurveyApp.Application.Services
     public class SurveyService : ISurveyService
     {
         private readonly ISurveyRepository _surveyRepository;
+        private readonly ISurveyResponseRepository _responseRepository;
 
-        public SurveyService(ISurveyRepository surveyRepository)
+        public SurveyService(ISurveyRepository surveyRepository, ISurveyResponseRepository responseRepository)
         {
             _surveyRepository = surveyRepository;
+            _responseRepository = responseRepository;
         }
 
         public async Task<IEnumerable<Survey>> GetAllSurveysAsync()
@@ -29,6 +32,12 @@ namespace SurveyApp.Application.Services
 
         public async Task<bool> CreateSurveyAsync(Survey survey)
         {
+            // Set creation date if not already set
+            if (survey.CreatedAt == default)
+            {
+                survey.CreatedAt = DateTime.UtcNow;
+            }
+            
             return await _surveyRepository.AddAsync(survey);
         }
 
@@ -66,28 +75,75 @@ namespace SurveyApp.Application.Services
             return true;
         }
 
-        // NEW: Get survey response statistics
+        // Get survey response statistics with accurate completion rate calculation
         public async Task<SurveyStatistics> GetSurveyStatisticsAsync(int surveyId)
         {
             var survey = await _surveyRepository.GetByIdAsync(surveyId);
             if (survey == null)
-                return new SurveyStatistics { SurveyId = surveyId };
+                return new SurveyStatistics 
+                { 
+                    SurveyId = surveyId,
+                    TotalResponses = 0,
+                    CompletionRate = 0,
+                    AverageCompletionTime = 0,
+                    StartDate = DateTime.UtcNow,
+                    EndDate = null
+                };
 
-            // In a real implementation, this would calculate statistics
-            // from actual response data in the database
+            var responses = await _responseRepository.GetBySurveyIdAsync(surveyId);
+            var responsesList = responses.ToList();
+            
+            // Calculate total responses
+            int totalResponses = responsesList.Count;
+            
+            // Calculate completion rate
+            int completionRate = 0;
+            if (totalResponses > 0)
+            {
+                var requiredQuestions = survey.Questions.Count(q => q.Required);
+                if (requiredQuestions == 0)
+                {
+                    completionRate = 100;
+                }
+                else
+                {
+                    int totalRequired = totalResponses * requiredQuestions;
+                    int totalAnswered = 0;
+                    
+                    foreach (var response in responsesList)
+                    {
+                        var answeredRequired = response.Answers.Count(a => 
+                            survey.Questions.FirstOrDefault(q => q.Id.ToString() == a.QuestionId)?.Required == true
+                            && !string.IsNullOrEmpty(a.Value));
+                            
+                        totalAnswered += answeredRequired;
+                    }
+                    
+                    completionRate = totalRequired > 0 ? (int)(totalAnswered * 100.0 / totalRequired) : 100;
+                }
+            }
+            
+            // Calculate average completion time
+            int averageCompletionTime = 0;
+            if (totalResponses > 0)
+            {
+                int totalCompletionTime = responsesList.Sum(r => r.CompletionTime ?? 0);
+                averageCompletionTime = totalCompletionTime / totalResponses;
+            }
+
             return new SurveyStatistics
             {
                 SurveyId = surveyId,
-                TotalResponses = survey.ResponseCount,
-                CompletionRate = survey.CompletionRate,
-                AverageCompletionTime = 120, // 2 minutes (sample data)
+                TotalResponses = totalResponses,
+                CompletionRate = completionRate,
+                AverageCompletionTime = averageCompletionTime,
                 StartDate = survey.CreatedAt,
                 EndDate = null // Ongoing survey
             };
         }
     }
 
-    // NEW: Class to hold survey statistics
+    // Class to hold survey statistics
     public class SurveyStatistics
     {
         public int SurveyId { get; set; }
@@ -96,5 +152,22 @@ namespace SurveyApp.Application.Services
         public int AverageCompletionTime { get; set; } // In seconds
         public System.DateTime StartDate { get; set; }
         public System.DateTime? EndDate { get; set; }
+        
+        // Add questionStats property to match the React implementation
+        public List<QuestionStat> QuestionStats { get; set; } = new List<QuestionStat>();
+    }
+    
+    public class QuestionStat
+    {
+        public string QuestionId { get; set; } = string.Empty;
+        public string QuestionTitle { get; set; } = string.Empty;
+        public List<AnswerStat> Responses { get; set; } = new List<AnswerStat>();
+    }
+    
+    public class AnswerStat
+    {
+        public string Answer { get; set; } = string.Empty;
+        public int Count { get; set; }
+        public double Percentage { get; set; }
     }
 }
