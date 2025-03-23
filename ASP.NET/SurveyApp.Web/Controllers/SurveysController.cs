@@ -53,9 +53,9 @@ namespace SurveyApp.Web.Controllers
             return View(new CreateSurveyViewModel
             {
                 Id = 0, // New survey
-                Questions = new List<QuestionViewModel>
+                Questions = new List<SurveyQuestionViewModel>
                 {
-                    new QuestionViewModel
+                    new SurveyQuestionViewModel
                     {
                         Id = Guid.NewGuid().ToString(),
                         Type = "single-choice",
@@ -118,7 +118,7 @@ namespace SurveyApp.Web.Controllers
                             ? new TriggerSettings
                             {
                                 Type = model.DeliveryConfig.Trigger.Type,
-                                DelayHours = model.DeliveyConfig.Trigger.DelayHours,
+                                DelayHours = model.DeliveryConfig.Trigger.DelayHours,
                                 SendAutomatically = model.DeliveryConfig.Trigger.SendAutomatically
                             }
                             : null
@@ -166,7 +166,7 @@ namespace SurveyApp.Web.Controllers
                 Title = survey.Title,
                 Description = survey.Description,
                 Status = survey.Status,
-                Questions = survey.Questions.Select(q => new QuestionViewModel
+                Questions = survey.Questions.Select(q => new SurveyQuestionViewModel
                 {
                     Id = q.Id.ToString(),
                     Title = q.Text,
@@ -270,8 +270,8 @@ namespace SurveyApp.Web.Controllers
                 },
                 Responses = responses.Select(r => new SurveyResponseViewModel
                 {
-                    Id = r.Id,
-                    SurveyId = r.SurveyId,
+                    Id = r.Id.ToString(),
+                    SurveyId = r.SurveyId.ToString(),
                     RespondentName = r.RespondentName,
                     RespondentEmail = r.RespondentEmail,
                     SubmittedAt = r.SubmittedAt,

@@ -192,8 +192,7 @@ export class SupabaseSurveyRepository implements SurveyRepository {
       description: data.description,
       questions: data.questions || [],
       createdAt: data.created_at,
-      deliveryConfig: data.delivery_config,
-      status: (data.delivery_config as any)?.status || 'active' // Extract status from delivery_config if needed
+      deliveryConfig: data.delivery_config
     };
   }
 }
